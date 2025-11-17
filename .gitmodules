@@ -1,0 +1,3 @@
+[submodule "FrameHook"]
+	path = FrameHook
+	url = https://github.com/Yonni123/FrameHook.git
