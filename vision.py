@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 from main import BALL_BETWEEN_Y
+from main import LINE_SLOPE
 
 
 def detect_path_edges(edge_img):
@@ -10,7 +11,7 @@ def detect_path_edges(edge_img):
         rho = 1,
         theta = np.pi / 90,
         threshold = 40,
-        minLineLength = 40,
+        minLineLength = 20,
         maxLineGap = 15
     )
 
@@ -32,9 +33,8 @@ def detect_path_edges(edge_img):
 
         # ZigZag path has two dominant slopes, remove everything else
         margin = 0.05
-        mid = 0.5
-        slope_min = mid - margin
-        slope_max = mid + margin
+        slope_min = LINE_SLOPE - margin
+        slope_max = LINE_SLOPE + margin
         if abs(slope) < slope_min or abs(slope) > slope_max:
             continue
 
@@ -81,7 +81,8 @@ def detect_ball(edge_img):
 def process_frame(frame):
     """Process a single frame to detect path edges and ball position."""
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    edges = cv2.Canny(gray, 50, 150)
+    gray[gray == 255] = 0  # Remove white areas (background)
+    edges = cv2.Canny(gray, 50, 250)
 
     left_lines, right_lines = detect_path_edges(edges)
     ball_x, ball_y, ball_r = detect_ball(edges)
