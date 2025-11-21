@@ -19,28 +19,29 @@ current_side = -1  # 1 = right, -1 = left
 current_trigger_count = 0
 
 
+switch_counter = 0
 def switch_side():
-    global current_side, current_trigger_count
+    global current_side, current_trigger_count, switch_counter
     if current_trigger_count < SWITCH_TRIGGER_MAX:
         current_trigger_count += 1
-        return
+        return False
     
     current_trigger_count = 0
+    switch_counter += 1
+    print(f"Switch trigger {switch_counter}")
     pyautogui.click()  # Simulate a click to switch sides
     current_side *= -1
+    return True
+    
 
+def squared_distance(p1, p2):
+    dx = p1[0] - p2[0]
+    dy = p1[1] - p2[1]
+    return dx*dx + dy*dy
 
-def agent_line(left_lines, right_lines, ball_x, ball_y):
-    """
-    Pick the closest intersection point between the target line 
-    (through the ball with slope LINE_SLOPE * current_side)
-    and a segment from the selected side, with the constraint that:
-      - The intersection must lie on the finite segment.
-      - The intersection must be ABOVE the ball (inter_y < ball_y).
-    """
-
-    target_slope = LINE_SLOPE * current_side
-    candidate_lines = right_lines if current_side == -1 else left_lines
+def find_target_line(left_lines, right_lines, ball_x, ball_y, side_to_check, check_above):
+    target_slope = LINE_SLOPE * side_to_check
+    candidate_lines = right_lines if side_to_check == -1 else left_lines
 
     target_b = ball_y - target_slope * ball_x
 
@@ -61,25 +62,49 @@ def agent_line(left_lines, right_lines, ball_x, ball_y):
                 min(y1, y2) <= inter_y <= max(y1, y2)):
             continue
 
-        # Check vertical position (intersection must be above ball)
-        if inter_y >= ball_y:   
-            continue    
+        # Check vertical position (above or below ball depending on if check_above is -1 or 1)
+        if (inter_y*check_above) >= (ball_y*check_above):   
+            continue
+
+        # If intersection is too close to line segement ends, ignore
+        thresh = 5
+        if ((squared_distance((x1, y1), (inter_x, inter_y)) < thresh**2) or
+            (squared_distance((x2, y2), (inter_x, inter_y)) < thresh**2)):
+            continue
 
         # Compute distance
-        dist = ((inter_x - ball_x)**2 + (inter_y - ball_y)**2)**0.5
+        dist = (inter_x - ball_x)**2 + (inter_y - ball_y)**2
 
+        # Trigger sign is used to determine if we are looking for
+        # distances above or below the threshold
         if dist < best_dist:
             best_dist = dist
             best_inter = (inter_x, inter_y)
 
     if best_inter is None:
-        return None
-    
-    if best_dist < LINE_LENGTH_MIN:
-        switch_side()
+        return None, None
+    else:
+        inter_x, inter_y = best_inter
+        return (int(ball_x), int(ball_y), int(inter_x), int(inter_y)), best_dist**0.5
 
-    inter_x, inter_y = best_inter
-    return (int(ball_x), int(ball_y), int(inter_x), int(inter_y))
+def agent_line(left_lines, right_lines, ball_x, ball_y):
+    # Normal case, there is a line in front of the ball, we can compute distance directly to it
+    best_line, best_dist = find_target_line(left_lines, right_lines, ball_x, ball_y, side_to_check=current_side, check_above=1)
+    if best_line is not None:
+        if best_dist < LINE_LENGTH_MIN:
+            switch_side()
+        return best_line, best_dist
+    
+    # First line in front of ball vanished, we need to check the other side line and if we aren't close to it, switch sides
+    best_line, best_dist = find_target_line(left_lines, right_lines, ball_x, ball_y, side_to_check=(current_side*-1), check_above=1)
+    if best_line is not None:
+        if best_dist > (LINE_LENGTH_MIN + 10):
+            switch_side()
+        return best_line, best_dist
+    
+    # Both front line and side line has vanished, check behind the ball...
+    print("TODO: check behind ball!")
+    return None, None
 
 
 def game_loop(self, screen, game_FPS, counter, time_ms):
@@ -92,23 +117,11 @@ def game_loop(self, screen, game_FPS, counter, time_ms):
         return
     
     overlay = vision.plot_info(edges, left_lines, right_lines, ball_x, ball_y, ball_r)
-    best_line = agent_line(left_lines, right_lines, ball_x, ball_y)
+
+    best_line, line_length = agent_line(left_lines, right_lines, ball_x, ball_y)
     if best_line is not None:
-        x1, y1, x2, y2 = best_line
-
-        # Draw the line
-        cv2.line(overlay, (x1, y1), (x2, y2), (255, 0, 0), 3)
-
-        # Compute line length
-        line_length = int(((x2 - x1)**2 + (y2 - y1)**2)**0.5)
-
-        text = f"Len: {line_length}"
-        text_pos = (x1 + 10, y1 - 10)   # Slight offset from the ball
-
-        # Draw main text (white)
-        cv2.putText(overlay, text, text_pos,
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 1, cv2.LINE_AA)
-
+        vision.draw_line_with_length(overlay, best_line, line_length, (255, 0, 0))
+    
     cv2.setWindowTitle("GameFrame", f"Press Q to quit | FPS: {game_FPS:.2f}")
     cv2.imshow("GameFrame", overlay)
 

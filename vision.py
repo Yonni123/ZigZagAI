@@ -10,8 +10,8 @@ def detect_path_edges(edge_img):
         edge_img,
         rho = 1,
         theta = np.pi / 90,
-        threshold = 40,
-        minLineLength = 20,
+        threshold = 20,
+        minLineLength = 15,
         maxLineGap = 15
     )
 
@@ -32,7 +32,7 @@ def detect_path_edges(edge_img):
         slope = dy / dx
 
         # ZigZag path has two dominant slopes, remove everything else
-        margin = 0.05
+        margin = 0.1
         slope_min = LINE_SLOPE - margin
         slope_max = LINE_SLOPE + margin
         if abs(slope) < slope_min or abs(slope) > slope_max:
@@ -45,6 +45,14 @@ def detect_path_edges(edge_img):
 
     return left, right
 
+
+def draw_line_with_length(img, line, length, color):
+    x1, y1, x2, y2 = line
+    cv2.line(img, (x1, y1), (x2, y2), color, 3)
+    text = f"Len: {length:.2f}"
+    text_pos = (x1 + 10, y1 - 10)   # Slight offset from the ball
+    cv2.putText(img, text, text_pos,
+                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 1, cv2.LINE_AA)
 
 def detect_ball(edge_img):
     # Crop vertically where the ball must be
@@ -82,7 +90,11 @@ def process_frame(frame):
     """Process a single frame to detect path edges and ball position."""
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     gray[gray == 255] = 0  # Remove white areas (background)
-    edges = cv2.Canny(gray, 50, 250)
+
+    gray_blur = cv2.GaussianBlur(gray, (5, 5), 1.5)
+
+    cv2.imshow("Gray", gray_blur)
+    edges = cv2.Canny(gray_blur, 10, 100)
 
     left_lines, right_lines = detect_path_edges(edges)
     ball_x, ball_y, ball_r = detect_ball(edges)
