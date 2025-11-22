@@ -13,6 +13,8 @@ BALL_BETWEEN_Y = (517, 547)  # y-range where ball is expected to be found
 LINE_SLOPE = 0.5    # minimum slope for lines to be considered path edges
 LINE_LENGTH_MIN = 50  # minimum length for line to switch sides
 SWITCH_TRIGGER_MAX = 1 # number of triggers before switching sides
+SPEED_X = 8.74
+SPEED_Y = 2.163
 pyautogui.PAUSE = 0.01
 
 current_side = -1  # 1 = right, -1 = left
@@ -47,6 +49,7 @@ def find_target_line(left_lines, right_lines, ball_x, ball_y, side_to_check, che
 
     best_dist = float('inf')
     best_inter = None
+    best_line = None
 
     for x1, y1, x2, y2 in candidate_lines:
         # Slope/intercept of candidate
@@ -80,30 +83,49 @@ def find_target_line(left_lines, right_lines, ball_x, ball_y, side_to_check, che
         if dist < best_dist:
             best_dist = dist
             best_inter = (inter_x, inter_y)
+            best_line = (x1, y1, x2, y2)
 
     if best_inter is None:
-        return None, None
+        return None, None, None
     else:
         inter_x, inter_y = best_inter
-        return (int(ball_x), int(ball_y), int(inter_x), int(inter_y)), best_dist**0.5
+        return (int(ball_x), int(ball_y), int(inter_x), int(inter_y)), best_dist**0.5, best_line
 
 def agent_line(left_lines, right_lines, ball_x, ball_y):
     # Normal case, there is a line in front of the ball, we can compute distance directly to it
-    best_line, best_dist = find_target_line(left_lines, right_lines, ball_x, ball_y, side_to_check=current_side, check_above=1)
+    best_line, best_dist, _ = find_target_line(left_lines, right_lines, ball_x, ball_y, side_to_check=current_side, check_above=1)
     if best_line is not None:
         if best_dist < LINE_LENGTH_MIN:
             switch_side()
         return best_line, best_dist
     
     # First line in front of ball vanished, we need to check the other side line and if we aren't close to it, switch sides
-    best_line, best_dist = find_target_line(left_lines, right_lines, ball_x, ball_y, side_to_check=(current_side*-1), check_above=1)
+    ball_y_offset = ball_y + 10
+    best_line, best_dist, _ = find_target_line(left_lines, right_lines, ball_x, ball_y_offset, side_to_check=(current_side*-1), check_above=1)
     if best_line is not None:
         if best_dist > (LINE_LENGTH_MIN + 10):
             switch_side()
         return best_line, best_dist
     
     # Both front line and side line has vanished, check behind the ball...
-    print("TODO: check behind ball!")
+    best_line, best_dist, edge_line = find_target_line(left_lines, right_lines, ball_x, ball_y, side_to_check=(current_side*-1), check_above=-1)
+    if best_line is not None:
+        # If the ball is not close enough to the line, skip it
+        if best_dist > (LINE_LENGTH_MIN + 23):
+            return best_line, best_dist
+        
+        # If the ball is not close enough to the top endpoint of line, skip it
+        x1, y1, x2, y2 = edge_line
+        x, y = (x2, y2) if y2 < y1 else (x1, y1)
+        new_line = (ball_x, ball_y, x, y)
+        new_dist = squared_distance((ball_x, ball_y), (x, y))
+        new_dist = new_dist**0.5
+        if new_dist > (LINE_LENGTH_MIN + 30):
+            return new_line, new_dist
+        
+        switch_side()
+        return new_line, new_dist
+    
     return None, None
 
 
