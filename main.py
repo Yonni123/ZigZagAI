@@ -53,6 +53,8 @@ def find_target_line(left_lines, right_lines, ball_x, ball_y, side_to_check, che
 
     for x1, y1, x2, y2 in candidate_lines:
         # Slope/intercept of candidate
+        if (x2 - x1) == 0:
+            continue
         m = (y2 - y1) / (x2 - x1)
         b = y1 - m * x1
 

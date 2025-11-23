@@ -3,6 +3,74 @@ import numpy as np
 from main import BALL_BETWEEN_Y
 from main import LINE_SLOPE
 
+def merge_segments(lines, slope=None, epsilon=20):
+    """
+    Vectorized version: merge collinear, contiguous line segments.
+    
+    lines: list of (x1, y1, x2, y2)
+    slope: constant slope (if None, calculated from first segment)
+    epsilon: tolerance for comparing y-intercepts or gaps
+
+    Returns: list of merged lines (x1, y1, x2, y2)
+    """
+    if len(lines) == 0:
+        return []
+
+    lines = np.array(lines, dtype=float)  # shape (N, 4)
+    x1, y1, x2, y2 = lines[:,0], lines[:,1], lines[:,2], lines[:,3]
+
+    # --- Compute slope if not given ---
+    if slope is None:
+        slope = (y2[0] - y1[0]) / (x2[0] - x1[0]) if x2[0] != x1[0] else np.inf
+
+    # --- Compute intercepts ---
+    m = y1 - slope * x1
+    x_min = np.minimum(x1, x2)
+    x_max = np.maximum(x1, x2)
+
+    # --- Sort by intercept ---
+    sort_idx = np.argsort(m)
+    x1, y1, x2, y2 = x1[sort_idx], y1[sort_idx], x2[sort_idx], y2[sort_idx]
+    x_min, x_max, m = x_min[sort_idx], x_max[sort_idx], m[sort_idx]
+
+    # --- Group by intercept ---
+    diff_m = np.diff(m, prepend=m[0])
+    new_group_mask = np.abs(diff_m) >= epsilon
+    group_ids = np.cumsum(new_group_mask)
+
+    merged_lines = []
+
+    for gid in np.unique(group_ids):
+        mask = group_ids == gid
+        gx_min, gx_max = x_min[mask], x_max[mask]
+        gx1, gy1, gx2, gy2 = x1[mask], y1[mask], x2[mask], y2[mask]
+
+        # --- Sort by x_min within group ---
+        sort_x_idx = np.argsort(gx_min)
+        gx_min, gx_max = gx_min[sort_x_idx], gx_max[sort_x_idx]
+        gx1, gy1, gx2, gy2 = gx1[sort_x_idx], gy1[sort_x_idx], gx2[sort_x_idx], gy2[sort_x_idx]
+
+        # --- Split contiguous segments based on X gaps ---
+        cont_start = 0
+        for i in range(1, len(gx_min)):
+            if gx_min[i] - gx_max[i-1] > epsilon:
+                # Merge previous contiguous group
+                xs = np.concatenate([gx1[cont_start:i], gx2[cont_start:i]])
+                x_start, x_end = xs.min(), xs.max()
+                y_start = slope * x_start + gy1[cont_start] - slope * gx1[cont_start]
+                y_end = slope * x_end + gy1[cont_start] - slope * gx1[cont_start]
+                merged_lines.append((int(x_start), int(y_start), int(x_end), int(y_end)))
+                cont_start = i
+
+        # Merge last contiguous sub-group
+        xs = np.concatenate([gx1[cont_start:], gx2[cont_start:]])
+        x_start, x_end = xs.min(), xs.max()
+        y_start = slope * x_start + gy1[cont_start] - slope * gx1[cont_start]
+        y_end = slope * x_end + gy1[cont_start] - slope * gx1[cont_start]
+        merged_lines.append((int(x_start), int(y_start), int(x_end), int(y_end)))
+
+    return merged_lines
+
 
 def detect_path_edges(edge_img):
     # Hough lines
@@ -43,6 +111,8 @@ def detect_path_edges(edge_img):
         else:
             right.append((x1, y1, x2, y2))
 
+    left = merge_segments(left, slope=-LINE_SLOPE)
+    right = merge_segments(right, slope=LINE_SLOPE)
     return left, right
 
 
@@ -89,7 +159,7 @@ def detect_ball(edge_img):
 def process_frame(frame):
     """Process a single frame to detect path edges and ball position."""
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    gray[gray == 255] = 0  # Remove white areas (background)
+    #gray[gray == 255] = 0  # Remove white areas (background)
 
     gray_blur = cv2.GaussianBlur(gray, (5, 5), 1.5)
 
@@ -106,6 +176,9 @@ def draw_lines(img, lines, color):
     """Helper function to draw many Hough lines."""
     for x1, y1, x2, y2 in lines:
         cv2.line(img, (x1, y1), (x2, y2), color, 2)
+
+        cv2.circle(img, (x1, y1), 5, color, -1)   # filled circle
+        cv2.circle(img, (x2, y2), 5, color, -1)
 
 
 def plot_info(frame, left_lines, right_lines, ball_x, ball_y, ball_r):
