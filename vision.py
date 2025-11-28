@@ -3,6 +3,8 @@ import numpy as np
 from main import BALL_BETWEEN_Y
 from main import LINE_SLOPE
 
+prev_ball_x = None
+
 def merge_segments(lines, slope=None, epsilon=20):
     """
     Vectorized version: merge collinear, contiguous line segments.
@@ -125,8 +127,22 @@ def draw_line_with_length(img, line, length, color):
                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 1, cv2.LINE_AA)
 
 def detect_ball(edge_img):
+    global prev_ball_x
+
     # Crop vertically where the ball must be
     cropped = edge_img[BALL_BETWEEN_Y[0]:BALL_BETWEEN_Y[1], :]
+
+    if prev_ball_x is not None:
+        # Restrict horizontal search around previous ball position
+        x_min = max(prev_ball_x - 50, 0)
+        x_max = min(prev_ball_x + 50, edge_img.shape[1])
+
+        cropped = cropped[:, x_min:x_max]
+    else:
+        x_min = 0  # no offset
+
+    cropped_debug = cv2.resize(cropped, None, fx=2, fy=2, interpolation=cv2.INTER_LINEAR)
+    cv2.imshow("Ball_debug", cropped_debug)
 
     # HoughCircles works better on grayscale + slight blur, not raw edges
     # If `edge_img` is already edge-detected (0/255), we convert it.
@@ -146,14 +162,20 @@ def detect_ball(edge_img):
     )
 
     if circles is None:
+        prev_ball_x = None
         return None, None, None
     
     circles = np.round(circles[0, :]).astype("int")
 
     # Take the strongest circle (first one)
     x, y, r = circles[0]
+    x_full = x + x_min
+    if prev_ball_x is not None:
+        prev_ball_x = int(prev_ball_x * 0.7 + x_full * 0.3)
+    else:
+        prev_ball_x = x_full
     y_full = y + BALL_BETWEEN_Y[0]
-    return x, y_full, r
+    return x_full, y_full, r
 
 
 def process_frame(frame):
@@ -163,7 +185,6 @@ def process_frame(frame):
 
     gray_blur = cv2.GaussianBlur(gray, (5, 5), 1.5)
 
-    cv2.imshow("Gray", gray_blur)
     edges = cv2.Canny(gray_blur, 10, 100)
 
     left_lines, right_lines = detect_path_edges(edges)
