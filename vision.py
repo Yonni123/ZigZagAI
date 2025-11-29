@@ -141,8 +141,8 @@ def detect_ball(edge_img):
     else:
         x_min = 0  # no offset
 
-    cropped_debug = cv2.resize(cropped, None, fx=2, fy=2, interpolation=cv2.INTER_LINEAR)
-    cv2.imshow("Ball_debug", cropped_debug)
+    #cropped_debug = cv2.resize(cropped, None, fx=2, fy=2, interpolation=cv2.INTER_LINEAR)
+    #cv2.imshow("Ball_debug", cropped_debug)
 
     # HoughCircles works better on grayscale + slight blur, not raw edges
     # If `edge_img` is already edge-detected (0/255), we convert it.

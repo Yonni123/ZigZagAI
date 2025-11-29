@@ -21,16 +21,13 @@ current_side = -1  # 1 = right, -1 = left
 current_trigger_count = 0
 
 
-switch_counter = 0
 def switch_side():
-    global current_side, current_trigger_count, switch_counter
+    global current_side, current_trigger_count
     if current_trigger_count < SWITCH_TRIGGER_MAX:
         current_trigger_count += 1
         return False
     
     current_trigger_count = 0
-    switch_counter += 1
-    print(f"Switch trigger {switch_counter}")
     pyautogui.click()  # Simulate a click to switch sides
     current_side *= -1
     return True
